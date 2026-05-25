@@ -11,11 +11,13 @@ import com.odtheking.odin.events.core.onReceive
 import com.odtheking.odin.features.Module
 import com.odtheking.odin.utils.Colors
 import com.odtheking.odin.utils.PersonalBest
+import com.odtheking.odin.utils.alert
 import com.odtheking.odin.utils.modMessage
 import com.odtheking.odin.utils.render.drawText
 import com.odtheking.odin.utils.render.drawTracer
 import com.odtheking.odin.utils.render.drawWireFrameBox
 import com.odtheking.odin.utils.render.textDim
+import com.odtheking.odin.utils.renderBoundingBox
 import com.odtheking.odin.utils.skyblock.dungeon.DungeonUtils
 import com.odtheking.odin.utils.skyblock.dungeon.M7Phases
 import com.odtheking.odin.utils.toFixed
@@ -23,6 +25,7 @@ import net.minecraft.network.protocol.game.ClientboundAddEntityPacket
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket
 import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon
 
 object WitherDragons : Module(
     name = "Wither Dragons",
@@ -46,6 +49,8 @@ object WitherDragons : Module(
 
     private val dragonTitleDropDown by DropdownSetting("Dragon Spawn Dropdown")
     val dragonTitle by BooleanSetting("Dragon Title", true, desc = "Displays a title for spawning dragons.").withDependency { dragonTitleDropDown }
+    private val dragonKillZoneTitle by BooleanSetting("Kill Zone Title", true, desc = "Displays a title when a dragon is inside its statue kill zone.").withDependency { dragonTitleDropDown }
+    private val priorityKillZoneOnly by BooleanSetting("Priority Only", false, desc = "Only displays the kill zone title for the priority dragon.").withDependency { dragonKillZoneTitle && dragonTitleDropDown }
     private val dragonTracers by BooleanSetting("Dragon Tracer", false, desc = "Draws a line to spawning dragons.").withDependency { dragonTitleDropDown }
 
     private val dragonAlerts by DropdownSetting("Dragon Alerts Dropdown")
@@ -70,6 +75,7 @@ object WitherDragons : Module(
     var currentTick = 0L
 
     val dragonPBs = PersonalBest(this, "DragonPBs")
+    private val dragonsInKillZone = mutableSetOf<WitherDragonsEnum>()
 
     init {
         onReceive<ClientboundLevelParticlesPacket> {
@@ -108,6 +114,7 @@ object WitherDragons : Module(
                 if (it.timeToSpawn > 0) it.timeToSpawn--
                 else if (it.state == WitherDragonState.SPAWNING) it.setAlive(null)
             }
+            checkDragonKillZones()
             currentTick++
         }
 
@@ -140,7 +147,34 @@ object WitherDragons : Module(
 
         on<WorldEvent.Load> {
             DragonCheck.dragonHealthMap.clear()
+            dragonsInKillZone.clear()
             WitherDragonsEnum.reset()
+        }
+    }
+
+    private fun checkDragonKillZones() {
+        if (!dragonKillZoneTitle || DungeonUtils.getF7Phase() != M7Phases.P5) {
+            dragonsInKillZone.clear()
+            return
+        }
+
+        WitherDragonsEnum.entries.forEach { dragon ->
+            if (dragon.state != WitherDragonState.ALIVE || (priorityKillZoneOnly && dragon != priorityDragon)) {
+                dragonsInKillZone.remove(dragon)
+                return@forEach
+            }
+
+            val entity = mc.level?.entitiesForRendering()
+                ?.filterIsInstance<EnderDragon>()
+                ?.find { it.uuid == dragon.entityUUID }
+
+            val inKillZone = entity?.renderBoundingBox?.intersects(dragon.aabbDimensions) == true
+            if (!inKillZone) {
+                dragonsInKillZone.remove(dragon)
+                return@forEach
+            }
+
+            if (dragonsInKillZone.add(dragon)) alert("§${dragon.colorCode}${dragon.name} in zone", true)
         }
     }
 
