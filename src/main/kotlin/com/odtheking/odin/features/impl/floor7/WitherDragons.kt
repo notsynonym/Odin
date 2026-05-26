@@ -76,6 +76,7 @@ object WitherDragons : Module(
 
     val dragonPBs = PersonalBest(this, "DragonPBs")
     private val dragonsInKillZone = mutableSetOf<WitherDragonsEnum>()
+    private val dragonsLeftKillZone = mutableSetOf<WitherDragonsEnum>()
 
     init {
         onReceive<ClientboundLevelParticlesPacket> {
@@ -148,6 +149,7 @@ object WitherDragons : Module(
         on<WorldEvent.Load> {
             DragonCheck.dragonHealthMap.clear()
             dragonsInKillZone.clear()
+            dragonsLeftKillZone.clear()
             WitherDragonsEnum.reset()
         }
     }
@@ -161,6 +163,7 @@ object WitherDragons : Module(
         WitherDragonsEnum.entries.forEach { dragon ->
             if (dragon.state != WitherDragonState.ALIVE || (priorityKillZoneOnly && dragon != priorityDragon)) {
                 dragonsInKillZone.remove(dragon)
+                dragonsLeftKillZone.remove(dragon)
                 return@forEach
             }
 
@@ -171,10 +174,11 @@ object WitherDragons : Module(
             val inKillZone = entity?.renderBoundingBox?.intersects(dragon.aabbDimensions) == true
             if (!inKillZone) {
                 dragonsInKillZone.remove(dragon)
+                dragonsLeftKillZone.add(dragon)
                 return@forEach
             }
 
-            if (dragonsInKillZone.add(dragon)) alert("§${dragon.colorCode}${dragon.name} in zone", true)
+            if (dragon in dragonsLeftKillZone && dragonsInKillZone.add(dragon)) alert("§${dragon.colorCode}${dragon.name} in zone", true)
         }
     }
 

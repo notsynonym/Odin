@@ -29,9 +29,15 @@ object DragonCheck {
     }
 
     fun dragonSpawn(packet: ClientboundAddEntityPacket) {
-        if (packet.type == EntityType.ENDER_DRAGON)
-            WitherDragonsEnum.entries.find {
-                it.aabbDimensions.contains(Vec3(packet.x, packet.y, packet.z))
+        if (packet.type != EntityType.ENDER_DRAGON) return
+
+        val spawnPos = Vec3(packet.x, packet.y, packet.z)
+        WitherDragonsEnum.entries
+            .filter { it.state == WitherDragonState.SPAWNING }
+            .minByOrNull { it.spawnPos.center.distanceToSqr(spawnPos) }
+            ?.setAlive(packet.uuid)
+            ?: WitherDragonsEnum.entries.find {
+                it.aabbDimensions.contains(spawnPos)
             }?.setAlive(packet.uuid)
     }
 
